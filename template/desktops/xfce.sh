@@ -63,7 +63,7 @@ xfsettingsd --sm-client-disable &
 #xfce4-panel --sm-client-disable &
 
 # Launch Python
-module load ${python_module}
+module load ${pymol_module}
 
 # Launch the ASE GUI
 pymol ${path_to_file}
