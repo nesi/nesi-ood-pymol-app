@@ -1,0 +1,8 @@
+---
+name: Pymol on NeSI OOD
+category: Interactive Apps
+role: batch_connect
+description: |
+  This will launch an Interactive Pymol session.
+
+  

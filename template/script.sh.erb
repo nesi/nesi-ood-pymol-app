@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# Clean the environment
+module purge && module restore
+
+# Ensure that the user's configured login shell is used
+export SHELL="$(getent passwd $USER | cut -d: -f7)"
+
+# Set working directory to home directory
+cd "${HOME}"
+
+#
+# Launch Xfce Window Manager and Panel
+#
+
+## Fix terminal colors for ls command with a wrapper script for system ls
+mkdir -p ~/ondemand/ood_bin
+cat > ~/ondemand/ood_bin/ls <<'EOF'
+#!/bin/bash
+/usr/bin/ls --color=auto "$@"
+EOF
+
+chmod +x ~/ondemand/ood_bin/ls
+export PATH="$HOME/ondemand/ood_bin:$PATH"
+
+# Grab the user's selection from the OOD form
+export pymol_module="<%= context.pymol_module %>"
+export path_to_file="<%= context.path_to_file %>"
+
+source "<%= session.staged_root.join("desktops", "xfce.sh") %>"
+

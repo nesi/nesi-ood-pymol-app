@@ -1,0 +1,170 @@
+<%
+   user = OodSupport::User.new
+
+   weka_nfs_server = Resolv.getaddress("weka-nfs")
+
+   # Initialize nesi_gid to nil
+   nesi_gid = nil
+
+   # Fetch the GID for the account group only if the account is present
+   if account.present?
+     nesi_group = Etc.getgrnam(account)  # Fetching the group based on the account
+     nesi_gid = nesi_group ? nesi_group.gid : nil  # Get the GID, or nil if not found
+   end
+   
+   # Get ALL groups the user belongs to that match the project pattern
+   # Same approach as used in form.yml
+   all_user_groups = OodSupport::User.new.groups.sort_by(&:id).tap { |groups|
+     groups.unshift(groups.delete(OodSupport::Process.group))
+   }.map(&:name)
+   
+   # Collect GIDs for ALL user's projects (not just selected ones)
+   additional_gids = []
+   all_user_groups.each do |project|
+     begin
+       project_group = Etc.getgrnam(project)
+       additional_gids << project_group.gid if project_group && project_group.gid != nesi_gid
+     rescue ArgumentError
+       # Handle case where group doesn't exist
+       Rails.logger.warn "Group not found for project: #{project}"
+     end
+   end
+   
+   # Combine all supplemental groups
+   all_supplemental_groups = [nesi_gid].compact + additional_gids
+%>
+---
+<% if cluster == "my-k8s-cluster" -%>
+batch_connect:
+  template: "vnc"
+
+script:
+  accounting_id: "<%= account %>"
+  wall_time: "<%= bc_num_hours.to_i * 3600 %>"
+  native:
+    container:
+      name: "<%= account.present? ? "pymol-#{account}" : 'pymol' %>"
+      image: "ghcr.io/nesi/nesi-ondemand-vnc:v0.9.0"
+      command: ["/bin/bash","-l","<%= staged_root %>/custom_job_script.sh"]
+      restart_policy: 'OnFailure'
+      <% if all_supplemental_groups.any? %>
+      supplemental_groups:
+        <% all_supplemental_groups.each do |gid| %>
+        - <%= gid %>
+        <% end %>
+      <% end %>
+      env:
+        TZ: "Pacific/Auckland"
+        LMOD_CONFIG_DIR: "/opt/nesi/etc/lmod"
+        MODULEPATH_ROOT: "/opt/nesi/lmod"
+        MODULEPATH: "/opt/nesi/lmod/generic"
+        BASH_ENV: "/usr/share/lmod/lmod/init/bash"
+        WEBSOCKIFY_CMD: "/usr/local/bin/websockify"
+        SESSION_DIR: "<%= staged_root %>"
+        PRIMARY_PROJECT: "<%= account %>"
+        <% if additional_projects.present? %>
+        ADDITIONAL_PROJECTS: "<%= Array(additional_projects).join(':') %>"
+        <% end %>
+      port: "5901"
+      cpu: "<%= num_cores %>"
+      memory: "<%= num_mem %>Gi"
+    mounts:
+      - type: host
+        name: home
+        path: /home
+        destination_path: /home
+      - type: host
+        name: wlghome
+        path: /home
+        destination_path: /scale_wlg_persistent/filesets/home
+      - type: host
+        name: project
+        path: /nesi/project
+        destination_path: /nesi/project
+      - type: host
+        name: wlgproject
+        path: /nesi/project
+        destination_path: /scale_wlg_persistent/filesets/project
+      - type: host
+        name: nobackup
+        path: /nesi/nobackup
+        destination_path: /nesi/nobackup
+      - type: host
+        name: software
+        path: /opt/nesi
+        destination_path: /opt/nesi
+      - type: host
+        name: nss-socket
+        host_type: Socket
+        path: /var/lib/sss/pipes/nss
+        destination_path: /var/lib/sss/pipes/nss
+      - type: host
+        name: nsswitch-conf
+        host_type: File
+        path: /etc/nsswitch.conf
+        destination_path: /etc/nsswitch.conf
+        
+      # Required mounts for SLURM
+      - type: host
+        name: munge-socket
+        host_type: Socket
+        path: /var/run/munge/munge.socket.2
+        destination_path: /var/run/munge/munge.socket.2
+      - type: host
+        name: slurm-conf
+        path: /run/slurm/conf
+        destination_path: /etc/slurm/
+    configmap:
+      files:
+        - filename: "logging.conf"
+          data: |
+            [*]
+            log-level=debug
+            logger-type=file
+            log-dir=<%= staged_root %>/logs
+          mount_path: '/etc/matlab'
+        - filename: 'k8_helper'
+          data: |
+            #!/usr/bin/env bash
+
+            set -x
+
+            KEY=$1
+            VALUE=$(echo -n $2 | base64)
+            CFG="$(hostname)-secret"
+
+            kubectl get secret ${CFG} -o json | jq --arg key $KEY --arg value $VALUE '.data[$key] = $value'  | kubectl apply -f -
+          mount_path: '/opt/open_ondemand/helpers'
+
+<%- else -%>
+batch_connect:
+  template: "vnc"
+  websockify_cmd: '/usr/local/bin/websockify'
+  header: |
+    #!/bin/bash
+    #. ~/.bashrc
+  script_wrapper: |
+    cat << "CTRSCRIPT" > container.sh
+    export PATH="$PATH:/opt/TurboVNC/bin"
+    export LMOD_CONFIG_DIR=/opt/nesi/etc/lmod
+    export MODULEPATH_ROOT=/opt/nesi/lmod
+    export MODULEPATH=/opt/nesi/lmod/generic
+    export BASH_ENV=/usr/share/lmod/lmod/init/bash
+    %s
+    CTRSCRIPT
+
+    export APPTAINER_BIND="$HOME,/nesi,/opt/nesi,/etc/passwd,/etc/group,/var/lib/sss/pipes,/etc/nsswitch.conf,/var/run/munge/munge.socket.2,/var/run/slurm/conf,/var/spool/slurmd/conf-cache"
+    
+    apptainer exec --writable-tmpfs /opt/nesi/containers/nesi-ood-base/nesi-ondemand-vnc-0.8.0.aimg /bin/bash container.sh
+
+script:
+  accounting_id: "<%= account %>"
+  wall_time: "<%= bc_num_hours.to_i * 3600 %>"
+  native:
+    - "--ntasks"
+    - "1"
+    - "--cpus-per-task"
+    - "<%= num_cores %>"
+    - "--mem"
+    - "<%= num_mem %>G"
+<%- end -%>

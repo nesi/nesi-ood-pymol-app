@@ -1,0 +1,72 @@
+# Export the module function if it exists
+[[ $(type -t module) == "function" ]] && export -f module
+
+export SESSION_DIR="${PWD}"
+
+<%- if context.cluster == "my-k8s-cluster" -%>
+exec &> >(tee -a "pod.log")
+
+# the path to websockify needs to be set in $WEBSOCKIFY_CMD, this is done in submit.yml
+which websockify
+
+# this is the k8s version that finds host and port
+# for vnc app the `port` variable is already set and we
+# use the nodePort from find_host_port for the websocket
+source /bin/find_host_port
+
+export HOST_CFG=$(dig +short -x $HOST_CFG)
+
+export host="$HOST_CFG"
+export websocket="$PORT_CFG"
+
+# create the secret with the password set
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: $(hostname)-secret
+  namespace: $POD_NAMESPACE
+  labels:
+    job: $(hostname)
+    app.kubernetes.io/managed-by: open-ondemand
+data:
+  password: $(echo -n "$password" | base64 )
+EOF
+
+# set initial values for websocket, spassword and display in the secret
+/bin/bash /opt/open_ondemand/helpers/k8_helper spassword "$spassword"
+/bin/bash /opt/open_ondemand/helpers/k8_helper websocket "$websocket"
+/bin/bash /opt/open_ondemand/helpers/k8_helper display "$display"
+
+# override the create connection yaml function to also update the password values in the secret
+# for vnc apps, password and spassword are changed every time the launch button is click and
+# create connection yaml is called to update those values in connection.yml, for k8s we need to
+# update those values in the secret too
+create_yml () {
+  echo "Generating connection YAML file and updating k8s secret..."
+  (
+    umask 077
+    echo -e "host: $host\nport: $port\npassword: $password\ndisplay: $display\nwebsocket: $websocket\nspassword: $spassword" > "${SESSION_DIR}/connection.yml"
+    kubectl get secret $(hostname)-secret -o json | jq --arg newpass "$(echo -n ${password} | base64)" '.data["password"]=$newpass' | kubectl apply -f -
+    kubectl get secret $(hostname)-secret -o json | jq --arg newspass "$(echo -n ${spassword} | base64)" '.data["spassword"]=$newspass' | kubectl apply -f -
+  )
+}
+export -f create_yml
+
+# we also override find_port, since for k8s we use the nodePort returned in find_host_port above and stored in $HOST_CFG,
+# the find_port function is called in job_script_content.sh after after.sh so we need to override it
+find_port () {
+  echo "${PORT_CFG}"
+}
+export -f find_port
+
+<%- end -%>
+
+echo "host is: ${host}"
+echo "port is: ${port}"
+echo "websocket is: $websocket"
+echo "password is: $password"
+echo "spassword is: $spassword"
+echo "display is: $display"

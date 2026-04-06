@@ -1,0 +1,81 @@
+<%-
+  groups = OodSupport::User.new.groups.sort_by(&:id).tap { |groups|
+    groups.unshift(groups.delete(OodSupport::Process.group))
+  }.map(&:name).grep(/.*[0-9]{5}/)
+
+  all_groups = OodSupport::User.new.groups.sort_by(&:id).tap { |groups|
+    groups.unshift(groups.delete(OodSupport::Process.group))
+  }.map(&:name)
+  has_slurm_apps = all_groups.include?("nesi-staff") || all_groups.include?("ondemand-slurm-apps")
+-%>
+---
+title: "Pymol"
+
+description: |
+  This app will launch a Pymol session
+attributes:
+  # select the cluster
+  cluster:
+    widget: "select"
+    options:
+      - [
+          "Kubernetes", "my-k8s-cluster",
+        ]
+<% if has_slurm_apps %>
+      - ["Slurm HPC", "nesi_tdc_hpc"]
+    help: |
+      Kubernetes jobs are more likely to start promptly - "Slurm HPC" jobs may have to wait in the queue.
+      If you need Apptainer or GPUs then you must choose "Slurm HPC" currently.
+<% end %>
+    cacheable: false  # we always want k8s at the top?
+
+  bc_vnc_resolution:
+    required: true
+  pymol_module:
+    widget: select
+    label: "Pymol module"
+    options:
+      - [ "Pymol 2.5.0", "pymol-open-source/2.5.0" ]
+    cacheable: false  # default to latest (first in list)
+  path_to_file:
+    widget: text_field
+    label: "Full path to file (Don't put anything in to launch blank ASE GUI)"
+  account:
+    label: "Project Code"
+    widget: select
+    options:
+      <%- groups.each do |group| %>
+      - "<%= group %>"
+      <%- end %>
+    required: true
+    display: true
+  bc_num_hours:
+    max: 24
+    min: 1
+    step: 1
+    value: 1
+    widget: number_field
+  num_cores:
+    label: Number of cores
+    max: 4
+    min: 1
+    value: 2
+    widget: number_field
+    display: true
+  num_mem:
+    label: Memory per job (GB)
+    max: 16
+    min: 2
+    step: 1
+    value: 2
+    widget: number_field
+    display: true
+form:
+  - cluster
+  - account
+  - pymol_module
+  - path_to_file
+  - bc_vnc_resolution
+  - bc_num_hours
+  - num_cores
+  - num_mem
