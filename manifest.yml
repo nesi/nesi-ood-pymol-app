@@ -1,6 +1,6 @@
 ---
-name: Pymol on NeSI OOD
-category: Interactive Apps
+name: Pymol
+category: Chemistry/Biochemistry
 role: batch_connect
 description: |
   This will launch an Interactive Pymol session.
