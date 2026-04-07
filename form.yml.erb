@@ -31,15 +31,6 @@ attributes:
 
   bc_vnc_resolution:
     required: true
-  pymol_module:
-    widget: select
-    label: "Pymol module"
-    options:
-      - [ "Pymol 2.5.0", "pymol-open-source/2.5.0" ]
-    cacheable: false  # default to latest (first in list)
-  path_to_file:
-    widget: text_field
-    label: "Full path to file (Don't put anything in to launch blank Pymol session)"
   account:
     label: "Project Code"
     widget: select
@@ -49,6 +40,15 @@ attributes:
       <%- end %>
     required: true
     display: true
+  pymol_module:
+    widget: select
+    label: "Pymol module"
+    options:
+      - [ "Pymol 2.5.0", "pymol-open-source/2.5.0" ]
+    cacheable: false  # default to latest (first in list)
+  path_to_file:
+    widget: text_field
+    label: "Full path to file (Don't put anything in to launch blank Pymol session)"
   bc_num_hours:
     max: 24
     min: 1
