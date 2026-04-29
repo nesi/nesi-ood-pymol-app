@@ -62,7 +62,7 @@ script:
         WEBSOCKIFY_CMD: "/usr/local/bin/websockify"
         SESSION_DIR: "<%= staged_root %>"
         PRIMARY_PROJECT: "<%= account %>"
-        OMP_NUM_THREADS: "<%= cores %>"
+        OMP_NUM_THREADS: "<%= num_cores %>"
         <% if additional_projects.present? %>
         ADDITIONAL_PROJECTS: "<%= Array(additional_projects).join(':') %>"
         <% end %>
