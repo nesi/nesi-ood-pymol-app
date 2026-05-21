@@ -44,7 +44,7 @@ script:
   native:
     container:
       name: "<%= account.present? ? "pymol-#{account}" : 'pymol' %>"
-      image: "ghcr.io/nesi/nesi-ondemand-vnc:v0.9.0"
+      image: "ghcr.io/nesi/nesi-ondemand-vnc:v0.10.3"
       command: ["/bin/bash","-l","<%= staged_root %>/custom_job_script.sh"]
       restart_policy: 'OnFailure'
       <% if all_supplemental_groups.any? %>
